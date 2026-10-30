@@ -11,6 +11,7 @@ import { reconcile } from '../../src/providers/google/reconcile';
 import {
   collect,
   dates,
+  exerciseOverlapWarnings,
   locked,
   packet,
   previousWeek,
@@ -81,6 +82,41 @@ function provider(fail = false) {
 }
 afterEach(() => vi.unstubAllGlobals());
 describe('workflow', () => {
+  it('flags only overlapping same-type exercise without deleting records', () => {
+    const session = (type: string, startTime: string, endTime: string) => ({
+      exerciseType: type,
+      interval: { startTime, endTime },
+    });
+    const data = [
+      session('RUN', '2026-10-27T01:00:00Z', '2026-10-27T02:00:00Z'),
+      session('RUN', '2026-10-27T01:30:00Z', '2026-10-27T02:30:00Z'),
+      session('WALK', '2026-10-27T01:30:00Z', '2026-10-27T02:30:00Z'),
+      session('RUN', '2026-10-27T02:30:00Z', '2026-10-27T03:00:00Z'),
+    ];
+    expect(
+      exerciseOverlapWarnings(
+        [{ day: '2026-10-27', stream: 'exercise', data, fetched_at: '' }],
+        '2026-10-27',
+        '2026-10-27',
+      ),
+    ).toEqual([{ day: '2026-10-27', possibleOverlappingPairs: 1 }]);
+    expect(data).toHaveLength(4);
+  });
+  it('targeted backfill leaves unrelated and empty days intact', async () => {
+    const env = environment();
+    await env.DB.prepare('INSERT INTO observations(day,stream,data,fetched_at) VALUES(?,?,?,?)')
+      .bind('2026-10-27', 'hrv', '[{"dailyRmssd":42}]', 'old')
+      .run();
+    const status = await collect(env, '2026-10-27', '2026-10-27', provider(), {
+      only: ['hrv'],
+      preserveEmpty: true,
+    });
+    expect(status).toEqual({ hrv: 'empty' });
+    const result = await packet(env, '2026-10-27', '2026-10-27');
+    expect(result.observations).toContainEqual(
+      expect.objectContaining({ stream: 'hrv', data: [{ dailyRmssd: 42 }] }),
+    );
+  });
   it('fetches the source on demand and returns an explicit freshness result', async () => {
     const env = environment();
     const source = provider();

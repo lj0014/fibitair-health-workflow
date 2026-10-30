@@ -1,6 +1,7 @@
 import type { HrvDay, RespiratoryRateDay, SkinTempDay, SpO2Day } from '../types';
 import { type CivilDate, civilDateToIso } from './civil';
 import type { GoogleClient } from './client';
+import { detailedRecords } from './extra';
 import { inRange, isRecord, num, reconcile } from './reconcile';
 
 const PAGE = 90; // daily metrics: 90 days is the range ceiling
@@ -35,6 +36,10 @@ export async function getHRV(
     value: {
       dailyRmssd: num(v.averageHeartRateVariabilityMilliseconds),
       deepRmssd: num(v.deepSleepRootMeanSquareOfSuccessiveDifferencesMilliseconds),
+      ...(num(v.nonRemHeartRateBeatsPerMinute) !== undefined
+        ? { nonRemHeartRateBeatsPerMinute: num(v.nonRemHeartRateBeatsPerMinute) }
+        : {}),
+      ...(num(v.entropy) !== undefined ? { entropy: num(v.entropy) } : {}),
     },
   }));
 }
@@ -71,9 +76,29 @@ export async function getSkinTemperature(
   client: Pick<GoogleClient, 'requestJson'>,
   start: string,
   end: string,
+  bounded = false,
 ): Promise<SkinTempDay[]> {
-  const dps = await reconcile(client, 'daily-sleep-temperature-derivations', PAGE);
-  return dailyPoints(dps, 'dailySleepTemperatureDerivations', start, end).map(({ dateTime, v }) => {
+  const points = bounded
+    ? (
+        await detailedRecords(
+          client,
+          'daily-sleep-temperature-derivations',
+          'dailySleepTemperatureDerivations',
+          'daily',
+          start,
+          end,
+        )
+      )
+        .filter((p): p is { day: string; value: Record<string, unknown> } => isRecord(p.value))
+        .map((p) => ({ dateTime: p.day, v: p.value }))
+        .sort((a, b) => a.dateTime.localeCompare(b.dateTime))
+    : dailyPoints(
+        await reconcile(client, 'daily-sleep-temperature-derivations', PAGE),
+        'dailySleepTemperatureDerivations',
+        start,
+        end,
+      );
+  return points.map(({ dateTime, v }) => {
     const nightly = num(v.nightlyTemperatureCelsius);
     const baseline = num(v.baselineTemperatureCelsius);
     // v4 gives absolute °C + baseline; Fitbit's field is the nightly delta.

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { GoogleClient } from '../../../src/providers/google/client';
+import { GoogleClient } from '../../../src/providers/google/client';
+import { detailedRecords } from '../../../src/providers/google/extra';
 import {
   getHRV,
   getRespiratoryRate,
@@ -12,6 +13,7 @@ import {
   SkinTempDaySchema,
   SpO2DaySchema,
 } from '../../../src/providers/types';
+import { createMockEnv } from '../../helpers/mock-env';
 
 // Synthetic fixtures in the shape of live reconcile (no filter) responses.
 function client(fixture: unknown): Pick<GoogleClient, 'requestJson'> {
@@ -50,6 +52,29 @@ describe('getHRV', () => {
   it('filters out days outside the requested range', async () => {
     const out = await getHRV(client(fixture), '2026-07-17', '2026-07-17');
     expect(out.map((d) => d.dateTime)).toEqual(['2026-07-17']);
+  });
+  it('retains optional non-REM heart rate and entropy, including zero', async () => {
+    const result = await getHRV(
+      client({
+        dataPoints: [
+          {
+            dailyHeartRateVariability: {
+              date: { year: 2026, month: 7, day: 17 },
+              averageHeartRateVariabilityMilliseconds: 55,
+              nonRemHeartRateBeatsPerMinute: '61',
+              entropy: 0,
+            },
+          },
+        ],
+      }),
+      '2026-07-17',
+      '2026-07-17',
+    );
+    expect(HrvDaySchema.parse(result[0]).value).toMatchObject({
+      dailyRmssd: 55,
+      nonRemHeartRateBeatsPerMinute: 61,
+      entropy: 0,
+    });
   });
 });
 
@@ -109,5 +134,47 @@ describe('getSkinTemperature', () => {
     const out = await getSkinTemperature(client(fixture), '2026-07-17', '2026-07-17');
     expect(out[0]?.value.nightlyRelative).toBeCloseTo(0.3, 2);
     expect(() => SkinTempDaySchema.parse(out[0])).not.toThrow();
+  });
+
+  it('shares the bounded source records between summary and detail in one collection', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            dataPoints: [
+              {
+                dailySleepTemperatureDerivations: {
+                  date: { year: 2026, month: 7, day: 17 },
+                  nightlyTemperatureCelsius: 34.2,
+                  baselineTemperatureCelsius: 33.9,
+                },
+              },
+            ],
+          }),
+        ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const env = createMockEnv({
+        access_token: 'tok',
+        refresh_token: 'r',
+        expires_at: String(Math.floor(Date.now() / 1000) + 3600),
+      });
+      const google = new GoogleClient(env, true);
+      const summary = await getSkinTemperature(google, '2026-07-17', '2026-07-17', true);
+      const details = await detailedRecords(
+        google,
+        'daily-sleep-temperature-derivations',
+        'dailySleepTemperatureDerivations',
+        'daily',
+        '2026-07-17',
+        '2026-07-17',
+      );
+      expect(summary[0]?.value.nightlyRelative).toBeCloseTo(0.3, 2);
+      expect(details).toHaveLength(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

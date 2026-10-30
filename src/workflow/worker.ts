@@ -81,14 +81,30 @@ app.delete('/context/:id', async (c) => {
   return c.json({ deleted: true });
 });
 app.post('/sync', async (c) => {
-  const { start, end } = z
-    .object({ start: dateSchema, end: dateSchema })
+  const { start, end, streams } = z
+    .object({
+      start: dateSchema,
+      end: dateSchema,
+      streams: z
+        .array(z.enum(['resting_heart_rate', 'hrv']))
+        .min(1)
+        .max(2)
+        .optional(),
+    })
     .strict()
     .parse(await c.req.json());
   // Short manual backfills prevent request timeouts; repeat for older weeks.
   if (Date.parse(end) - Date.parse(start) > 6 * 86400000)
     return c.json({ error: 'Maximum 7 days per sync' }, 400);
-  const result = await locked(c.env, 'sync', () => collect(c.env, start, end));
+  const result = await locked(c.env, 'sync', () =>
+    collect(
+      c.env,
+      start,
+      end,
+      undefined,
+      streams ? { only: streams, preserveEmpty: true } : undefined,
+    ),
+  );
   return c.json({ status: result ?? 'busy' });
 });
 app.post('/weekly-run', async (c) => c.json({ status: await weekly(c.env) }));

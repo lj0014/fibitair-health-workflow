@@ -18,7 +18,18 @@ export async function getHeartRateRange(
     if (!isRecord(v) || !isRecord(v.date)) continue;
     const dateTime = civilDateToIso(v.date as unknown as CivilDate);
     if (!inRange(dateTime, start, end)) continue;
-    out.push({ dateTime, value: { restingHeartRate: num(v.beatsPerMinute) } });
+    const metadata = v.dailyRestingHeartRateMetadata;
+    const calculationMethod =
+      isRecord(metadata) && typeof metadata.calculationMethod === 'string'
+        ? metadata.calculationMethod
+        : undefined;
+    out.push({
+      dateTime,
+      value: {
+        restingHeartRate: num(v.beatsPerMinute),
+        ...(calculationMethod !== undefined ? { calculationMethod } : {}),
+      },
+    });
   }
   return out.sort((a, b) => a.dateTime.localeCompare(b.dateTime));
 }

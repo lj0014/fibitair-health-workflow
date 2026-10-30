@@ -1,4 +1,8 @@
-# fibitair：Fitbit Air → Google Health → ChatGPT
+# Personal Health MCP：Google Health → Cloudflare → ChatGPT
+
+> 本项目的大部分设计、代码和搭建文档借鉴自 [JojenJ/fibitair-health-workflow](https://github.com/JojenJ/fibitair-health-workflow)。感谢原作者及其上游项目；保留原始 MIT 许可证和版权声明。本仓库在此基础上记录了个人部署中的改进。
+
+新增内容：睡眠分页缓存与温度采集修复；历史定向回补；静息心率计算方法及 HRV 附加字段；设备最后同步时间（可选授权）；运动会话重叠提醒。详见 [MCP 搭建与改动说明](docs/MCP搭建与改动.md)。
 
 一套可自行部署的个人健康数据工作流：后台安静采集并保存历史；主动提问时，ChatGPT 通过 MCP 当场读取 Google Health；每周可向本人 Gmail 发送数据包。
 
@@ -48,12 +52,12 @@ Google OAuth 授权后台访问健康数据和发送邮件；MCP OAuth 另行授
 
 ## 复现前提
 
-需要可正常同步至 Google Health 的设备与账户、能启用 Google Health API 和 Gmail API 的 Google Cloud 项目、Cloudflare Workers/KV/D1，以及可添加自定义 MCP 插件的 ChatGPT 账户。功能资格、设备产数、地区和平台限制以各账户实际情况为准。无法使用 MCP 时，可先完成归档和 JSON 导出。
+需要可正常同步至 Google Health 的设备与账户、能启用 Google Health API 的 Google Cloud 项目（Gmail API 仅周邮件需要）、Cloudflare Workers/KV/D1，以及可添加自定义 MCP 插件的 ChatGPT 账户。功能资格、设备产数、地区和平台限制以各账户实际情况为准。无法使用 MCP 时，可先完成归档和 JSON 导出。
 
 建议 **Node.js 24 LTS**；项目最低要求为 22.13（测试使用内置 `node:sqlite`）。锁定 **pnpm 10.30.0**，依赖由 `pnpm-lock.yaml` 固定。
 
 ```powershell
-git clone https://github.com/JojenJ/fibitair-health-workflow.git
+git clone https://github.com/lj0014/fibitair-health-workflow.git
 cd fibitair-health-workflow
 npx --yes pnpm@10.30.0 install --frozen-lockfile
 npm run typecheck

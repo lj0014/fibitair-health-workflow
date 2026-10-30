@@ -129,6 +129,7 @@ export const HeartRateDaySchema = z.object({
   dateTime: z.string(),
   value: z.object({
     restingHeartRate: z.number().optional(),
+    calculationMethod: z.string().optional(),
     heartRateZones: z.array(HeartRateZoneSchema).optional(),
     customHeartRateZones: z.array(HeartRateZoneSchema).optional(),
   }),
@@ -316,6 +317,8 @@ export const HrvDaySchema = z.object({
   value: z.object({
     dailyRmssd: z.number().optional(),
     deepRmssd: z.number().optional(),
+    nonRemHeartRateBeatsPerMinute: z.number().optional(),
+    entropy: z.number().optional(),
   }),
 });
 export type HrvDay = z.infer<typeof HrvDaySchema>;

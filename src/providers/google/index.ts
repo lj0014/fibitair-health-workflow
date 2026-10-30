@@ -64,8 +64,11 @@ function notYet(method: string): never {
 export class GoogleHealthProvider implements HealthProvider {
   private readonly client: GoogleClient;
 
-  constructor(env: Env) {
-    this.client = new GoogleClient(env);
+  constructor(
+    env: Env,
+    private readonly cacheCollectionReads = false,
+  ) {
+    this.client = new GoogleClient(env, cacheCollectionReads);
   }
 
   // --- Read ---
@@ -141,7 +144,7 @@ export class GoogleHealthProvider implements HealthProvider {
     return getRespiratoryRate(this.client, start, end);
   }
   getSkinTemperature(start: string, end: string): Promise<SkinTempDay[]> {
-    return getSkinTemperature(this.client, start, end);
+    return getSkinTemperature(this.client, start, end, this.cacheCollectionReads);
   }
   getHRV(start: string, end: string): Promise<HrvDay[]> {
     return getHRV(this.client, start, end);

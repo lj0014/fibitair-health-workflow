@@ -26,6 +26,31 @@ describe('getHeartRateRange', () => {
     ]);
     expect(() => out.map((d) => HeartRateDaySchema.parse(d))).not.toThrow();
   });
+  it('preserves the reported calculation method without inventing missing metadata', async () => {
+    const result = await getHeartRateRange(
+      client({
+        dataPoints: [
+          {
+            dailyRestingHeartRate: {
+              date: { year: 2026, month: 7, day: 17 },
+              beatsPerMinute: '62',
+              dailyRestingHeartRateMetadata: { calculationMethod: 'WITH_SLEEP' },
+            },
+          },
+          {
+            dailyRestingHeartRate: {
+              date: { year: 2026, month: 7, day: 16 },
+              beatsPerMinute: '60',
+            },
+          },
+        ],
+      }),
+      '2026-07-16',
+      '2026-07-17',
+    );
+    expect(result[0]?.value.calculationMethod).toBeUndefined();
+    expect(HeartRateDaySchema.parse(result[1]).value.calculationMethod).toBe('WITH_SLEEP');
+  });
 });
 
 describe('getBodyLog', () => {

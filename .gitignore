@@ -43,3 +43,6 @@ google-tokens.*.json
 # Claude-related files are never tracked (project convention)
 CLAUDE.md
 .claude/
+
+# Local Wrangler authentication
+.local-config/

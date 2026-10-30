@@ -71,6 +71,35 @@ describe('GoogleClient', () => {
     expect(u.searchParams.has('pageToken')).toBe(false);
   });
 
+  it('reuses sleep pages only within a collection and keeps different pages separate', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true })));
+    vi.stubGlobal('fetch', fetchMock);
+    const env = createMockEnv({ access_token: 'tok', refresh_token: 'r', expires_at: future() });
+    const path = '/v4/users/me/dataTypes/sleep/dataPoints:reconcile';
+    const client = new GoogleClient(env, true);
+    await client.requestJson(Schema, { path, query: { pageSize: 30 } });
+    await client.requestJson(Schema, { path, query: { pageSize: 30, pageToken: 'next' } });
+    await client.requestJson(Schema, { path, query: { pageSize: 30 } });
+    await client.requestJson(Schema, { path, query: { pageSize: 30, pageToken: 'next' } });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await new GoogleClient(env, true).requestJson(Schema, { path, query: { pageSize: 30 } });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('retries a failed sleep page rather than caching the failure', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('failed', { status: 500 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true })));
+    vi.stubGlobal('fetch', fetchMock);
+    const env = createMockEnv({ access_token: 'tok', refresh_token: 'r', expires_at: future() });
+    const client = new GoogleClient(env, true);
+    const req = { path: '/v4/users/me/dataTypes/sleep/dataPoints:reconcile' };
+    await expect(client.requestJson(Schema, req)).rejects.toBeInstanceOf(FitbitApiError);
+    await expect(client.requestJson(Schema, req)).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('refreshes once and retries after a 401, then succeeds', async () => {
     const fetchMock = vi.fn(async (url: string | URL) => {
       const s = String(url);

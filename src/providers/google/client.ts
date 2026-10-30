@@ -18,7 +18,12 @@ export type GoogleRequest = {
 };
 
 export class GoogleClient {
-  constructor(private readonly env: Env) {}
+  private readonly collectionReads = new Map<string, Promise<string>>();
+
+  constructor(
+    private readonly env: Env,
+    private readonly cacheCollectionReads = false,
+  ) {}
 
   async requestJson<T>(schema: ZodType<T>, req: GoogleRequest): Promise<T> {
     const body = await this.requestText(req);
@@ -35,6 +40,32 @@ export class GoogleClient {
   }
 
   async requestText(req: GoogleRequest): Promise<string> {
+    // Summary and detail streams share these records in one collection.
+    // The workflow creates a fresh client for each collection.
+    if (
+      this.cacheCollectionReads &&
+      (req.method ?? 'GET') === 'GET' &&
+      (req.path === '/v4/users/me/dataTypes/sleep/dataPoints:reconcile' ||
+        req.path ===
+          '/v4/users/me/dataTypes/daily-sleep-temperature-derivations/dataPoints:reconcile') &&
+      req.json === undefined
+    ) {
+      const key = JSON.stringify([req.path, req.query ?? {}]);
+      const cached = this.collectionReads.get(key);
+      if (cached) return cached;
+      const pending = this.requestTextUncached(req);
+      this.collectionReads.set(key, pending);
+      try {
+        return await pending;
+      } catch (error) {
+        this.collectionReads.delete(key);
+        throw error;
+      }
+    }
+    return this.requestTextUncached(req);
+  }
+
+  private async requestTextUncached(req: GoogleRequest): Promise<string> {
     const url = new URL(req.path, GOOGLE_API_BASE);
     if (req.query) {
       for (const [k, v] of Object.entries(req.query)) {
